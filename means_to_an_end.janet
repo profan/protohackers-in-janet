@@ -4,7 +4,7 @@
   "Returns the matched sequence of bytes in network byte order if the predicate holds, otherwise errors."
   [bytes start end &opt pred]
   (def bytes (slice bytes start end))
-  (if (or (nil? pred) (pred bytes)) bytes ))
+  (if (or (nil? pred) (pred bytes)) bytes))
 
 (defn is-type-valid
   "Returns true if the type is either 'I' or 'Q'"
