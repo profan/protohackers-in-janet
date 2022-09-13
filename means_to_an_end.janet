@@ -121,9 +121,8 @@
     (def [msg-ok? msg]
       (handle-next-message connection session))
     (if msg-ok?
-      (do
-        (when (not (nil? msg))
-          (net/write connection msg)))
+      (when (not (nil? msg))
+        (net/write connection msg))
       (break (:close connection)))))
 
 (defn start-mean-server
