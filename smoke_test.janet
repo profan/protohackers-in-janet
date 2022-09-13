@@ -1,13 +1,10 @@
-# Create echo-server that binds on * and listen on port 8000.
-(def echo-server (net/listen "*" "8080"))
-
 (defn close-if-valid
   "Closes the connection if it is still valid"
   [connection]
   (when (not (nil? connection))
     (:close connection)))
 
-(defn handler 
+(defn echo-handler 
   "Handles a connection in a separate fiber."
   [connection]
   (forever
@@ -17,6 +14,6 @@
       (break (:close connection)))))
 
 # Handle any connections as soon as they arrive
-(forever
- (def connection (net/accept echo-server))
- (ev/call handler connection))
+(net/server "*" "8080"
+            (fn [connection]
+              (ev/call echo-handler connection)))

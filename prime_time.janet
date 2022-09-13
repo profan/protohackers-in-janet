@@ -1,10 +1,6 @@
 (import spork/json)
 
 (def *is-debugging* false)
-(def *max-message-size* 1024)
-
-# Create prime-server that binds on * and listen on port 8080.
-(def prime-server (net/listen "*" "8080"))
 
 (defn is-prime?
   "Returns true if the given number is prime, otherwise false."
@@ -72,9 +68,10 @@
 
 (defn start-prime-server
   "Starts the prime server, handles incoming connections."
-  []
-  (forever
-    (def connection (net/accept prime-server))
-    (ev/call connection-handler connection)))
+  [address port]
+  (net/server address port
+              (fn [connection]
+                (ev/call connection-handler connection))))
 
-(start-prime-server)
+# Create prime-server that binds on * and listen on port 8080.
+(start-prime-server "*" "8080")
