@@ -1,7 +1,3 @@
-(import spork/json)
-
-(def *is-debugging* true)
-
 (defn expect
   "Returns the matched sequence of bytes in network byte order if the predicate holds, otherwise errors."
   [bytes start end &opt pred]
