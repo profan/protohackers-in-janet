@@ -1,3 +1,5 @@
+(def *is-debugging* false)
+
 (defn expect
   "Returns the matched sequence of bytes in network byte order if the predicate holds, otherwise errors."
   [bytes start end &opt pred]
@@ -65,7 +67,7 @@
     0))
 
 (defn buffer/push-integer-in-nbo
-  "Pushes the first 4 bytes of the passed integer to the buffer, result is in network byte order."
+  "Pushes the bytes of the passed integer to the buffer in network byte order."
   [buffer integer]
   (for i 0 4
     (buffer/push-byte buffer (band (brshift integer (* 8 (- 4 i 1))) 0xFF)))
@@ -92,6 +94,8 @@
   [body]
   (with-syms [$status $value]
     ~(let [[,$status ,$value] (protect ,body)]
+       (when (and *is-debugging* (not ,$status))
+         (printf "encountered error: %s" ,$value))
        (when (not ,$status) (break [,$status ,$value]))
        [,$status ,$value])))
 
@@ -100,7 +104,7 @@
   [connection session]
   (def [msg-ok? msg] (protect-or-break (read-client-message connection)))
   (def [parsed-msg-ok? parsed-msg] (protect-or-break (parse-client-message msg)))
-  (def [ok? response] [true (handle-client-message session parsed-msg)])
+  (def [ok? response] (protect-or-break (handle-client-message session parsed-msg)))
   [ok? response])
 
 (defn create-session
