@@ -1,9 +1,3 @@
-(defn close-if-valid
-  "Closes the connection if it is still valid"
-  [connection]
-  (when (not (nil? connection))
-    (:close connection)))
-
 (defn echo-handler 
   "Handles a connection in a separate fiber."
   [connection]
