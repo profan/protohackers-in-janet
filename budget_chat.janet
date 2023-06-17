@@ -13,13 +13,13 @@
 (defn handle-client-server-message
   "Handles a message from the server to the client."
   [connection name message]
-  (print (string/format "%s got message: %s" name message))
-  (net/write connection message))
+  (prin (string/format "%s got message: %s" name message))
+  (ev/write connection message))
 
 (defn handle-client-disconnect
   "Handles disconnecting a client, with an optional informational message first."
   [connection name &opt msg]
-  (when (not (nil? msg)) (net/write msg))
+  (when (not (nil? msg)) (ev/write msg))
   (ev/give-supervisor :disconnect name)
   (:close connection))
 
@@ -27,14 +27,13 @@
   "Handles a connected clients messages."
   [connection name]
   (forever
-    (print (string/format "%s waiting for message!" name))
+    # (print (string/format "%s waiting for message!" name))
     (def msg (ev/read connection *max-message-length*))
     (if (or (nil? msg) (= (length msg) 0))
       (do
         (handle-client-disconnect connection name)
         (break))
       (do
-        (print (string/format "%s sent message: %s" name msg))
         (ev/give-supervisor :message name msg)))
     (ev/sleep 0.1)))
 
@@ -65,11 +64,15 @@
 
 (defn broadcast-message
   "Handles broadcasting a message from a specific client, to all except the sender."
-  [clients from-client-channel message]
+  [clients from-client-channel name message]
+  (def adjusted-message
+    (if (not (string/has-suffix? "\n" message))
+             (string message "\n")
+             message))
+  (prin (string/format "%s sent message: %s" name adjusted-message))
   (loop [[name {:channel client-channel}] :pairs clients]
     (when (not (= from-client-channel client-channel))
-      (ev/give client-channel
-        (string/format message)))))
+      (ev/give client-channel adjusted-message))))
 
 (defn presence-notification
   "Handles telling a new client what users are currently on the server."
@@ -85,22 +88,22 @@
   "Handles announcing a new client to all current clients on the server."
   [clients new-client-channel new-client-name]
   (broadcast-message
-    clients new-client-channel
-    (string/format "* %s has entered the room\n" new-client-name)))
+    clients new-client-channel new-client-name
+    (string/format "* %s has entered the room" new-client-name)))
 
 (defn announce-leaving-client
   "Handles announcing a client leaving to all current clients on the server."
   [clients leaving-client-channel leaving-client-name]
   (broadcast-message
-    clients leaving-client-channel
-    (string/format "* %s has left the room\n" leaving-client-name)))
+    clients leaving-client-channel leaving-client-name
+    (string/format "* %s has left the room" leaving-client-name)))
 
 (defn client-message
   "Handles broadcasting a specific client's message to all other connected clients."
   [clients from-client-channel name message]
   (broadcast-message
-    clients from-client-channel
-    (string/format "[%s] %s\n" name message)))
+    clients from-client-channel name
+      (string/format "[%s] %s" name message)))
 
 (defn server-handler
   "Handles any notifications from clients that may need a server response."
@@ -116,15 +119,14 @@
       [:message name message]
         (do
           (def client-channel ((get clients name) :channel))
-          (print (string/format "[%s] %s" name message))
           (client-message clients client-channel name message))
       [:disconnect name]
         (do
           (def client (get clients name))
           (when (not (nil? client))
             (def client-channel (client :channel))
-            (print (string/format "%s was disconnected!" name))
             (announce-leaving-client clients client-channel name)
+            (print (string/format "%s was disconnected!" name))
             (:close client-channel)
             (put clients name nil))))))
 
