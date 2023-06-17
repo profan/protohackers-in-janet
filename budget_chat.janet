@@ -4,11 +4,27 @@
 (def *max-message-length* 1024)
 (def *is-debugging* true)
 
+(defn ev/read-until
+  "Reads from the stream until a given value is encountered, returns nil if eof is encountered"
+  [connection max v]
+  (var found? false)
+  (var read-buffer (buffer/new max))
+  (while (not found?)
+    (def current-value (ev/read connection 1))
+    (when (= current-value nil) (break))
+    (buffer/push read-buffer current-value)
+    (set found? (deep= current-value v)))
+  (if found?
+    read-buffer
+    nil))
+
 (defn is-valid-name?
   "Validates a client's name."
   [name]
   # this is so extremely cursed, pls janet why ur regex no good
-  (= (string/join (spork/regex/match "([aA-zZ0-9])+" name)) name))
+  (case
+    (= (length name) 0) false
+    (= (string/join (spork/regex/match "([aA-zZ0-9])+" name)) name)))
 
 (defn handle-client-server-message
   "Handles a message from the server to the client."
@@ -19,8 +35,8 @@
 (defn handle-client-disconnect
   "Handles disconnecting a client, with an optional informational message first."
   [connection name &opt msg]
-  (when (not (nil? msg)) (ev/write msg))
-  (ev/give-supervisor :disconnect name)
+  (when (not (nil? msg)) (protect (ev/write msg)))
+  (protect (ev/give-supervisor :disconnect name))
   (:close connection))
 
 (defn handle-client-messages
@@ -28,7 +44,7 @@
   [connection name]
   (forever
     # (print (string/format "%s waiting for message!" name))
-    (def msg (ev/read connection *max-message-length*))
+    (def msg (ev/read-until connection *max-message-length* @"\n"))
     (if (or (nil? msg) (= (length msg) 0))
       (do
         (handle-client-disconnect connection name)
