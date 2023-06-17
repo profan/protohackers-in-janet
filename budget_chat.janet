@@ -2,15 +2,7 @@
 
 (def *max-name-length* 32)
 (def *max-message-length* 1024)
-
-(defn echo-handler 
-  "Handles a connection in a separate fiber."
-  [connection]
-  (forever
-    (def msg (ev/read connection 1024))
-    (if (not (nil? msg))
-      (net/write connection msg)
-      (break (:close connection)))))
+(def *is-debugging* true)
 
 (defn is-valid-name?
   "Validates a client's name."
@@ -20,38 +12,9 @@
 
 (defn handle-client-server-message
   "Handles a message from the server to the client."
-  [connection message]
+  [connection name message]
+  (print (string/format "%s got message: %s" name message))
   (net/write connection message))
-
-(defn handle-client-message-to-server
-  "Handles a message from the client to the server."
-  [name message]
-  (ev/give-supervisor :message name message))
-
-(defn handle-client-messages
-  "Handles a connected clients messages."
-  [connection name]
-  (def msg (ev/read connection *max-message-length*))
-  (ev/give-supervisor msg))
-
-(defn handle-client-loop
-  "Handles a connected client."
-  [connection name]
-  (def client-channel (ev/chan))
-  (def client-net-channel (ev/go (fn [] (handle-client-messages connection name)) nil client-channel))
-  (ev/give-supervisor :connect client-channel name)
-  (forever
-    # we wait for either a message from the server, or from the network
-    (match
-      (ev/select
-        client-channel)
-      [:take ch msg]
-        (do
-          (when (= ch client-channel)
-            (handle-client-server-message connection msg))
-          (when (= ch client-net-channel)
-            (handle-client-message-to-server name msg)))
-      [:close _] (break))))
 
 (defn handle-client-disconnect
   "Handles disconnecting a client, with an optional informational message first."
@@ -59,6 +22,37 @@
   (when (not (nil? msg)) (net/write msg))
   (ev/give-supervisor :disconnect name)
   (:close connection))
+
+(defn handle-client-messages
+  "Handles a connected clients messages."
+  [connection name]
+  (forever
+    (print (string/format "%s waiting for message!" name))
+    (def msg (ev/read connection *max-message-length*))
+    (if (or (nil? msg) (= (length msg) 0))
+      (do
+        (handle-client-disconnect connection name)
+        (break))
+      (do
+        (print (string/format "%s sent message: %s" name msg))
+        (ev/give-supervisor :message name msg)))
+    (ev/sleep 0.1)))
+
+(defn handle-client-loop
+  "Handles a connected client."
+  [connection name]
+  (def client-channel (ev/chan))
+  (ev/give-supervisor :connect client-channel name)
+  (def client-net-channel (ev/go (fn [] (handle-client-messages connection name))))
+  (forever
+    (match
+      (ev/select client-channel)
+      # we check for a message from the server, if any
+      [:take ch msg] (handle-client-server-message connection name msg)
+      [:close ch]
+        (do
+          (handle-client-disconnect connection name)
+          (break)))))
 
 (defn client-handler
   "Handles a new client connection in a separate fiber."
@@ -70,7 +64,7 @@
     (handle-client-disconnect connection client-name "Invalid client name, disconnecting you!\n")))
 
 (defn broadcast-message
-  "Handles broadcasting a message from a specific client, to all except the sender"
+  "Handles broadcasting a message from a specific client, to all except the sender."
   [clients from-client-channel message]
   (loop [[name {:channel client-channel}] :pairs clients]
     (when (not (= from-client-channel client-channel))
