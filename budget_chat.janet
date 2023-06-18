@@ -43,14 +43,12 @@
   "Handles a connected clients messages."
   [connection name]
   (forever
-    # (print (string/format "%s waiting for message!" name))
     (def msg (ev/read-until connection *max-message-length* @"\n"))
     (if (or (nil? msg) (= (length msg) 0))
       (do
         (handle-client-disconnect connection name)
         (break))
-      (do
-        (ev/give-supervisor :message name msg)))
+      (ev/give-supervisor :message name (string/trim msg)))
     (ev/sleep 0.1)))
 
 (defn handle-client-loop
@@ -62,7 +60,6 @@
   (forever
     (match
       (ev/select client-channel)
-      # we check for a message from the server, if any
       [:take ch msg] (handle-client-server-message connection name msg)
       [:close ch]
         (do
@@ -78,27 +75,27 @@
     (handle-client-loop connection client-name)
     (handle-client-disconnect connection client-name "Invalid client name, disconnecting you!\n")))
 
+(defn send-message
+  "Sends a message to a single specific client."
+  [client-channel message]
+  (ev/give client-channel (string message "\n")))
+
 (defn broadcast-message
   "Handles broadcasting a message from a specific client, to all except the sender."
   [clients from-client-channel name message]
-  (def adjusted-message
-    (if (not (string/has-suffix? "\n" message))
-             (string message "\n")
-             message))
-  (prin (string/format "%s sent message: %s" name adjusted-message))
+  (print (string/format "%s sent message: %s" name message))
   (loop [[name {:channel client-channel}] :pairs clients]
     (when (not (= from-client-channel client-channel))
-      (ev/give client-channel adjusted-message))))
+      (send-message client-channel message))))
 
 (defn presence-notification
   "Handles telling a new client what users are currently on the server."
   [clients client-channel name]
-  # TODO: actually build the string with all clients here
   (def all-clients-str
-    (string/join
-      (filter (fn [e] (not= e name)) (keys clients))
-      ", "))
-  (ev/give client-channel (string/format "* The room contains: %s \n" all-clients-str)))
+    (string/join (filter (fn [e] (not= e name)) (keys clients)) ", "))
+  (send-message
+    client-channel
+    (string/format "* The room contains: %s" all-clients-str)))
 
 (defn announce-new-client
   "Handles announcing a new client to all current clients on the server."
